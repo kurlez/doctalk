@@ -1,0 +1,84 @@
+name: Build DocTalk
+
+on:
+  push:
+    tags:
+      - 'v*'  # Trigger on version tags
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:  # Allow manual trigger
+
+jobs:
+  build:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [windows-latest, ubuntu-latest, macos-latest]
+        python-version: ['3.9']
+
+    steps:
+    - uses: actions/checkout@v2
+
+    - name: Set up Python
+      uses: actions/setup-python@v2
+      with:
+        python-version: ${{ matrix.python-version }}
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install pyinstaller
+        pip install -r requirements.txt
+
+    - name: Build with PyInstaller
+      run: |
+        pyinstaller --onefile --name doctalk src/doctalk/doctalk.py
+
+    - name: Rename executable for Windows
+      if: matrix.os == 'windows-latest'
+      run: |
+        mkdir dist/doctalk-windows
+        move dist/doctalk.exe dist/doctalk-windows/
+        
+    - name: Rename executable for Linux
+      if: matrix.os == 'ubuntu-latest'
+      run: |
+        mkdir dist/doctalk-linux
+        mv dist/doctalk dist/doctalk-linux/
+
+    - name: Rename executable for MacOS
+      if: matrix.os == 'macos-latest'
+      run: |
+        mkdir dist/doctalk-macos
+        mv dist/doctalk dist/doctalk-macos/
+
+    - name: Upload artifacts
+      uses: actions/upload-artifact@v2
+      with:
+        name: doctalk-${{ matrix.os }}
+        path: dist/doctalk-*
+
+  create-release:
+    needs: build
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/')
+    
+    steps:
+    - name: Download all artifacts
+      uses: actions/download-artifact@v2
+
+    - name: Create Release
+      id: create_release
+      uses: softprops/action-gh-release@v1
+      with:
+        files: |
+          doctalk-windows-latest/doctalk.exe
+          doctalk-ubuntu-latest/doctalk
+          doctalk-macos-latest/doctalk
+        draft: false
+        prerelease: false
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

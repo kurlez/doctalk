@@ -1,0 +1,19 @@
+# 临时文件
+*.tmp
+temp*
+*.temp
+
+# 输出文件
+output/
+*.mp3
+*.wav
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# 虚拟环境
+venv/
+ENV/
