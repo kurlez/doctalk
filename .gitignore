@@ -3,6 +3,9 @@
 temp*
 *.temp
 
+*.egg-info/
+*.egg-info/*
+
 # 输出文件
 output/
 *.mp3
