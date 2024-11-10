@@ -5,9 +5,9 @@ import os
 from pathlib import Path
 import glob
 
-from .processors.markdown_processor import markdown_to_text
-from .processors.epub_processor import epub_to_text
-from .utils.audio_utils import split_text_into_chunks, set_mp3_metadata
+from doctalk.processors.markdown_processor import markdown_to_text
+from doctalk.processors.epub_processor import epub_to_text
+from doctalk.utils.audio_utils import split_text_into_chunks, set_mp3_metadata
 
 # Define available Chinese female voices
 CHINESE_FEMALE_VOICES = {

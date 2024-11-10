@@ -35,7 +35,7 @@ jobs:
 
     - name: Build with PyInstaller
       run: |
-        pyinstaller --onefile --name doctalk src/doctalk/doctalk.py
+        pyinstaller --onefile --name doctalk --collect-all doctalk src/doctalk/doctalk.py
 
     - name: Rename executable for Windows
       if: matrix.os == 'windows-latest'
