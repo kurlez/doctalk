@@ -7,7 +7,7 @@ import glob
 
 from doctalk.processors.markdown_processor import markdown_to_text
 from doctalk.processors.epub_processor import epub_to_text
-from doctalk.utils.audio_utils import split_text_into_chunks, set_mp3_metadata
+from doctalk.utils.audio_utils import split_text_into_chunks, set_mp3_metadata, split_long_audio
 
 # Define available Chinese female voices
 CHINESE_FEMALE_VOICES = {
@@ -149,6 +149,20 @@ async def process_single_file(input_file, output_dir, voice):
         )
         
         print(f"✓ Generated audio: {output_mp3}")
+        
+        # 在生成MP3文件后，检查并拆分长音频
+        output_files = split_long_audio(output_mp3)
+        
+        # 为拆分后的每个文件设置元数据
+        if len(output_files) > 1:
+            for i, file in enumerate(output_files, 1):
+                set_mp3_metadata(
+                    mp3_file=file,
+                    title=f"{title} (Part {i})",
+                    artist=f"Edge TTS - {voice}",
+                    album="Audio Book"
+                )
+                print(f"✓ 已处理音频片段 {i}/{len(output_files)}")
         
     except Exception as e:
         print(f"✗ Processing failed: {input_file}")
