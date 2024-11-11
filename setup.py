@@ -21,17 +21,20 @@ setup(
     ],
     python_requires=">=3.9",
     install_requires=[
-        "edge-tts>=6.1.7",
-        "markdown>=3.4.1",
-        "beautifulsoup4>=4.12.0",
-        "mutagen>=1.46.0",
-        "ebooklib>=0.18.0",
+        "edge-tts>=6.1.9",
+        "beautifulsoup4>=4.12.2",
+        "ebooklib>=0.18",
         "html2text>=2020.1.16",
+        "PyQt6>=6.4.0",
+        "qasync>=0.24.0",
     ],
     entry_points={
         "console_scripts": [
             "doctalk=doctalk.doctalk:main",
             "doctalk-gui=doctalk.gui.__main__:main"
         ],
+    },
+    package_data={
+        "doctalk": ["gui/*"],
     },
 )
