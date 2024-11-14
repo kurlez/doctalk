@@ -3,13 +3,13 @@ name: Build DocTalk
 on:
   push:
     tags:
-      - 'v*'  # Trigger on version tags
+      - 'v*'
     branches:
       - main
   pull_request:
     branches:
       - main
-  workflow_dispatch:  # Allow manual trigger
+  workflow_dispatch:
 
 jobs:
   build:
@@ -33,27 +33,34 @@ jobs:
         pip install pyinstaller
         pip install -r requirements.txt
 
-    - name: Build with PyInstaller
+    - name: Build CLI version with PyInstaller
       run: |
-        pyinstaller --onefile --name doctalk --collect-all doctalk src/doctalk/doctalk.py
+        pyinstaller --onefile --name doctalk-cli --collect-all doctalk src/doctalk/doctalk.py
 
-    - name: Rename executable for Windows
+    - name: Build GUI version with PyInstaller
+      run: |
+        pyinstaller --onefile --name doctalk-gui --collect-all doctalk src/doctalk/gui/__main__.py
+
+    - name: Rename executables for Windows
       if: matrix.os == 'windows-latest'
       run: |
         mkdir dist/doctalk-windows
-        move dist/doctalk.exe dist/doctalk-windows/
+        move dist/doctalk-cli.exe dist/doctalk-windows/
+        move dist/doctalk-gui.exe dist/doctalk-windows/
         
-    - name: Rename executable for Linux
+    - name: Rename executables for Linux
       if: matrix.os == 'ubuntu-latest'
       run: |
         mkdir dist/doctalk-linux
-        mv dist/doctalk dist/doctalk-linux/
+        mv dist/doctalk-cli dist/doctalk-linux/
+        mv dist/doctalk-gui dist/doctalk-linux/
 
-    - name: Rename executable for MacOS
+    - name: Rename executables for MacOS
       if: matrix.os == 'macos-latest'
       run: |
         mkdir dist/doctalk-macos
-        mv dist/doctalk dist/doctalk-macos/
+        mv dist/doctalk-cli dist/doctalk-macos/
+        mv dist/doctalk-gui dist/doctalk-macos/
 
     - name: Upload artifacts
       uses: actions/upload-artifact@v4
@@ -76,9 +83,12 @@ jobs:
       uses: ncipollo/release-action@v1
       with:
         artifacts: |
-          doctalk-windows-latest/doctalk.exe
-          doctalk-ubuntu-latest/doctalk
-          doctalk-macos-latest/doctalk
+          doctalk-windows-latest/doctalk-cli.exe
+          doctalk-windows-latest/doctalk-gui.exe
+          doctalk-ubuntu-latest/doctalk-cli
+          doctalk-ubuntu-latest/doctalk-gui
+          doctalk-macos-latest/doctalk-cli
+          doctalk-macos-latest/doctalk-gui
         draft: false
         prerelease: false
         token: ${{ secrets.GITHUB_TOKEN }}
