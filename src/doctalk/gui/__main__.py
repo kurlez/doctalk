@@ -1,6 +1,6 @@
 import sys
 from PyQt6.QtWidgets import QApplication
-from docktalk.main_window import MainWindow
+from doctalk.main_window import MainWindow
 import asyncio
 import qasync
 
