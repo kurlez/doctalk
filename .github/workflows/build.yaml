@@ -39,7 +39,7 @@ jobs:
 
     - name: Build GUI version with PyInstaller
       run: |
-        pyinstaller --onefile --name doctalk-gui --collect-all doctalk src/doctalk/gui/__main__.py
+        pyinstaller --onefile --name doctalk-gui --collect-all doctalk --hidden-import=qasync src/doctalk/gui/__main__.py
 
     - name: Rename executables for Windows
       if: matrix.os == 'windows-latest'
