@@ -1,7 +1,33 @@
 import os
+import subprocess
+import shutil
 from mutagen.id3 import ID3, TIT2, TPE1, TALB, TDRC
 import datetime
 from mutagen.mp3 import MP3
+
+def check_ffmpeg_available():
+    """
+    Check if ffmpeg is installed and available in the system PATH.
+    
+    Returns:
+        bool: True if ffmpeg is available, False otherwise
+    """
+    # First check if ffmpeg command exists in PATH
+    ffmpeg_path = shutil.which('ffmpeg')
+    if ffmpeg_path is None:
+        return False
+    
+    # Try to run ffmpeg -version to verify it works
+    try:
+        result = subprocess.run(
+            ['ffmpeg', '-version'],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            timeout=5
+        )
+        return result.returncode == 0
+    except (subprocess.TimeoutExpired, FileNotFoundError, OSError):
+        return False
 
 def split_text_into_chunks(text, max_length=4900):
     """
@@ -114,6 +140,11 @@ def split_long_audio(input_mp3, max_duration=3600):
         num_parts = int(duration / max_duration) + 1
         print(f"音频时长超过{max_duration/3600}小时，将拆分为{num_parts}个文件")
         
+        # Check if ffmpeg is available before splitting
+        if not check_ffmpeg_available():
+            print(f"警告: ffmpeg不可用，无法拆分音频文件。保留原始文件: {input_mp3}")
+            return [input_mp3]
+        
         output_files = []
         base_name = os.path.splitext(input_mp3)[0]
         
@@ -127,14 +158,25 @@ def split_long_audio(input_mp3, max_duration=3600):
             # -t: 持续时间（秒）
             # -i: 输入文件
             # -c copy: 复制编码（不重新编码，速度快）
-            cmd = f'ffmpeg -ss {start_time} -t {max_duration} -i "{input_mp3}" -c copy -y "{output_file}"'
-            result = os.system(cmd)
-            
-            if result == 0 and os.path.exists(output_file):
-                output_files.append(output_file)
-                print(f"已生成片段 {i+1}/{num_parts}: {output_file}")
-            else:
-                print(f"警告: 生成片段 {i+1} 失败")
+            try:
+                result = subprocess.run(
+                    ['ffmpeg', '-ss', str(start_time), '-t', str(max_duration), 
+                     '-i', input_mp3, '-c', 'copy', '-y', output_file],
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.PIPE,
+                    timeout=300
+                )
+                
+                if result.returncode == 0 and os.path.exists(output_file):
+                    output_files.append(output_file)
+                    print(f"已生成片段 {i+1}/{num_parts}: {output_file}")
+                else:
+                    error_msg = result.stderr.decode('utf-8', errors='ignore') if result.stderr else "Unknown error"
+                    print(f"警告: 生成片段 {i+1} 失败: {error_msg[:100]}")
+            except subprocess.TimeoutExpired:
+                print(f"警告: 生成片段 {i+1} 超时")
+            except Exception as e:
+                print(f"警告: 生成片段 {i+1} 时发生错误: {str(e)}")
         
         # 如果成功生成所有片段，删除原始文件
         if len(output_files) == num_parts:

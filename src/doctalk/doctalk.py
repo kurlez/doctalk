@@ -3,6 +3,8 @@ from edge_tts import Communicate
 import argparse
 import os
 import re
+import subprocess
+import shutil
 from pathlib import Path
 import glob
 
@@ -19,6 +21,30 @@ CHINESE_FEMALE_VOICES = {
     "xiaohan": "zh-CN-XiaohanNeural",      # Warm and sweet
     "xiaomeng": "zh-CN-XiaomengNeural"     # Cute and energetic
 }
+
+def check_ffmpeg_available():
+    """
+    Check if ffmpeg is installed and available in the system PATH.
+    
+    Returns:
+        bool: True if ffmpeg is available, False otherwise
+    """
+    # First check if ffmpeg command exists in PATH
+    ffmpeg_path = shutil.which('ffmpeg')
+    if ffmpeg_path is None:
+        return False
+    
+    # Try to run ffmpeg -version to verify it works
+    try:
+        result = subprocess.run(
+            ['ffmpeg', '-version'],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            timeout=5
+        )
+        return result.returncode == 0
+    except (subprocess.TimeoutExpired, FileNotFoundError, OSError):
+        return False
 
 def is_valid_text_for_tts(text):
     """
@@ -163,14 +189,31 @@ async def text_to_speech(text, voice="xiaoxiao", output_file="output.mp3"):
         
         # Merge audio files if multiple chunks exist
         if len(temp_files) > 1:
+            # Check if ffmpeg is available before merging
+            if not check_ffmpeg_available():
+                raise RuntimeError(
+                    "ffmpeg is not installed or not available in PATH. "
+                    "ffmpeg is required for merging multiple audio chunks. "
+                    "Please install ffmpeg from https://ffmpeg.org/download.html"
+                )
+            
             # Create file list for ffmpeg
             with open('files.txt', 'w', encoding='utf-8') as f:
                 for temp_file in temp_files:
                     f.write(f"file '{temp_file}'\n")
             
             # Merge using ffmpeg
-            os.system(f'ffmpeg -f concat -safe 0 -i files.txt -c copy "{output_file}"')
+            result = subprocess.run(
+                ['ffmpeg', '-f', 'concat', '-safe', '0', '-i', 'files.txt', '-c', 'copy', output_file],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.PIPE,
+                timeout=300
+            )
             os.remove('files.txt')
+            
+            if result.returncode != 0:
+                error_msg = result.stderr.decode('utf-8', errors='ignore') if result.stderr else "Unknown error"
+                raise RuntimeError(f"Failed to merge audio files with ffmpeg: {error_msg}")
         else:
             # Simply rename if only one temp file
             os.rename(temp_files[0], output_file)
@@ -324,9 +367,21 @@ def main():
         list_available_voices()
         return
     
+    # Check if ffmpeg is available before processing
+    if not check_ffmpeg_available():
+        print("ERROR: ffmpeg is not installed or not available in PATH.")
+        print("ffmpeg is required for audio processing operations.")
+        print("Please install ffmpeg from: https://ffmpeg.org/download.html")
+        print("\nWindows users can:")
+        print("  1. Download from https://www.gyan.dev/ffmpeg/builds/")
+        print("  2. Extract and add ffmpeg.exe to your system PATH")
+        print("  3. Or use: winget install ffmpeg")
+        return 1
+    
     print(f"Using voice: {args.voice}")
     asyncio.run(process_files(args.input, args.output_dir, args.voice))
     print("\nAll files processed!")
+    return 0
 
 if __name__ == "__main__":
     main()
