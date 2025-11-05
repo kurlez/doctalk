@@ -1,6 +1,6 @@
 from PyQt6.QtWidgets import (QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
                            QLabel, QProgressBar, QPushButton, QLineEdit,
-                           QFileDialog)
+                           QFileDialog, QTableWidget, QTableWidgetItem)
 from PyQt6.QtCore import Qt, QSize, QThread, pyqtSignal
 from PyQt6.QtGui import QIcon, QDragEnterEvent, QDropEvent
 import os
@@ -12,6 +12,7 @@ class ProcessThread(QThread):
     progress = pyqtSignal(str)
     finished = pyqtSignal()
     error = pyqtSignal(str)
+    file_status = pyqtSignal(str, str)  # (file_path, status)
 
     def __init__(self, files, output_dir, voice):
         super().__init__()
@@ -20,14 +21,31 @@ class ProcessThread(QThread):
         self.voice = voice
 
     def run(self):
+        """
+        Run the file processing in a separate thread with proper event loop handling.
+        On macOS, using asyncio.run() for each file avoids mach port conflicts.
+        """
         try:
-            from doctalk.doctalk import process_files
-            # 创建新的事件循环
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-            # 在新的事件循环中运行异步函数
-            loop.run_until_complete(process_files(self.files, self.output_dir, self.voice))
-            loop.close()
+            # 延迟导入以避免UI线程加载时间
+            from doctalk.doctalk import process_single_file
+            
+            # 在macOS上，为每个文件使用独立的 asyncio.run() 调用
+            # 这样可以避免事件循环冲突和 mach port 错误
+            for file_path in self.files:
+                try:
+                    self.file_status.emit(file_path, "processing")
+                    # 使用 asyncio.run() 为每个文件创建独立、干净的事件循环
+                    # 这避免了在macOS上出现 mach port 错误
+                    asyncio.run(
+                        process_single_file(file_path, self.output_dir, self.voice)
+                    )
+                    self.file_status.emit(file_path, "processed")
+                except Exception as e:
+                    error_msg = str(e)
+                    self.file_status.emit(file_path, f"error: {error_msg}")
+                    # 继续处理其他文件
+                    print(f"Error processing {file_path}: {error_msg}")
+            
             self.finished.emit()
         except Exception as e:
             self.error.emit(str(e))
@@ -127,6 +145,7 @@ class MainWindow(QMainWindow):
         super().__init__()
         self.initUI()
         self.process_thread = None
+        self.file_row_map = {}
         
     def initUI(self):
         self.setWindowTitle('DocTalk')
@@ -135,8 +154,8 @@ class MainWindow(QMainWindow):
             Qt.WindowType.FramelessWindowHint
         )
         
-        # 增加窗口高度以适应新添加的控件
-        self.setFixedSize(QSize(300, 250))
+        # 增加窗口尺寸以适应文件列表
+        self.setFixedSize(QSize(420, 420))
         
         self.central_widget = QWidget()
         self.setCentralWidget(self.central_widget)
@@ -166,6 +185,16 @@ class MainWindow(QMainWindow):
         # 添加拖放区域
         self.drop_area = DropArea(self)
         layout.addWidget(self.drop_area)
+
+        # 文件状态表格
+        self.file_table = QTableWidget(0, 2)
+        self.file_table.setHorizontalHeaderLabels(["文件", "状态"])
+        self.file_table.horizontalHeader().setStretchLastSection(True)
+        self.file_table.verticalHeader().setVisible(False)
+        self.file_table.setEditTriggers(self.file_table.EditTrigger.NoEditTriggers)
+        self.file_table.setSelectionBehavior(self.file_table.SelectionBehavior.SelectRows)
+        self.file_table.setSelectionMode(self.file_table.SelectionMode.NoSelection)
+        layout.addWidget(self.file_table)
         
         # 设置样式
         self.setStyleSheet("""
@@ -177,6 +206,11 @@ class MainWindow(QMainWindow):
             QLabel {
                 color: #666666;
                 font-size: 14px;
+            }
+            QTableWidget {
+                background-color: #ffffff;
+                border: 1px solid #cccccc;
+                border-radius: 3px;
             }
             QPushButton {
                 background-color: transparent;
@@ -222,10 +256,14 @@ class MainWindow(QMainWindow):
         output_dir = self.drop_area.get_output_directory()
         os.makedirs(output_dir, exist_ok=True)
         
+        # 初始化文件列表为未开始
+        self._init_file_status_list(files)
+
         # 创建并启动处理线程
         self.process_thread = ProcessThread(files, output_dir, "xiaoxiao")
         self.process_thread.finished.connect(self.on_process_finished)
         self.process_thread.error.connect(self.on_process_error)
+        self.process_thread.file_status.connect(self.on_file_status_update)
         self.process_thread.start()
 
     def on_process_finished(self):
@@ -235,3 +273,34 @@ class MainWindow(QMainWindow):
     def on_process_error(self, error_msg):
         self.drop_area.label.setText(f"处理失败：{error_msg}\n将文件拖放到这里")
         self.drop_area.progress.hide()
+
+    def _init_file_status_list(self, files):
+        """清空并初始化文件状态列表为 未开始"""
+        self.file_table.setRowCount(0)
+        self.file_row_map.clear()
+        for file_path in files:
+            row = self.file_table.rowCount()
+            self.file_table.insertRow(row)
+            file_item = QTableWidgetItem(os.path.basename(file_path))
+            status_item = QTableWidgetItem("未开始")
+            self.file_table.setItem(row, 0, file_item)
+            self.file_table.setItem(row, 1, status_item)
+            self.file_row_map[file_path] = row
+
+    def on_file_status_update(self, file_path: str, status: str):
+        """更新指定文件的状态单元格"""
+        row = self.file_row_map.get(file_path)
+        if row is None:
+            # 可能来自重复拖入，追加一行
+            row = self.file_table.rowCount()
+            self.file_table.insertRow(row)
+            self.file_table.setItem(row, 0, QTableWidgetItem(os.path.basename(file_path)))
+            self.file_row_map[file_path] = row
+        # 规范化状态展示
+        status_map = {
+            "not started": "未开始",
+            "processing": "处理中",
+            "processed": "已完成",
+        }
+        display_status = status_map.get(status.lower(), status)
+        self.file_table.setItem(row, 1, QTableWidgetItem(display_status))
