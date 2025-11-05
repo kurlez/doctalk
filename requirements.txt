@@ -4,6 +4,5 @@ beautifulsoup4>=4.12.0
 mutagen>=1.46.0
 ebooklib>=0.18.0
 html2text>=2020.1.16
-pydub>=0.25.1
 PyQt6>=6.4.0
 qasync>=0.24.0

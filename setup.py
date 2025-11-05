@@ -22,7 +22,9 @@ setup(
     python_requires=">=3.9",
     install_requires=[
         "edge-tts>=6.1.9",
+        "markdown>=3.4.1",
         "beautifulsoup4>=4.12.2",
+        "mutagen>=1.46.0",
         "ebooklib>=0.18",
         "html2text>=2020.1.16",
         "PyQt6>=6.4.0",

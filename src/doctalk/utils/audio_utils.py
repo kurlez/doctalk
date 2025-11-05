@@ -2,7 +2,6 @@ import os
 from mutagen.id3 import ID3, TIT2, TPE1, TALB, TDRC
 import datetime
 from mutagen.mp3 import MP3
-from pydub import AudioSegment
 
 def split_text_into_chunks(text, max_length=4900):
     """
@@ -115,28 +114,36 @@ def split_long_audio(input_mp3, max_duration=3600):
         num_parts = int(duration / max_duration) + 1
         print(f"音频时长超过{max_duration/3600}小时，将拆分为{num_parts}个文件")
         
-        # 读取音频文件
-        audio = AudioSegment.from_mp3(input_mp3)
         output_files = []
+        base_name = os.path.splitext(input_mp3)[0]
         
-        # 按时长拆分并保存
+        # 使用ffmpeg按时长拆分并保存
         for i in range(num_parts):
-            start_time = i * max_duration * 1000  # pydub使用毫秒
-            end_time = min((i + 1) * max_duration * 1000, len(audio))
-            
-            # 生成输出文件名
-            base_name = os.path.splitext(input_mp3)[0]
+            start_time = i * max_duration
             output_file = f"{base_name}_part{i+1:02d}.mp3"
             
-            # 截取并保存片段
-            segment = audio[start_time:end_time]
-            segment.export(output_file, format="mp3")
-            output_files.append(output_file)
+            # 使用ffmpeg截取音频片段
+            # -ss: 开始时间（秒）
+            # -t: 持续时间（秒）
+            # -i: 输入文件
+            # -c copy: 复制编码（不重新编码，速度快）
+            cmd = f'ffmpeg -ss {start_time} -t {max_duration} -i "{input_mp3}" -c copy -y "{output_file}"'
+            result = os.system(cmd)
             
-            print(f"已生成片段 {i+1}/{num_parts}: {output_file}")
-            
-        # 删除原始文件
-        os.remove(input_mp3)
+            if result == 0 and os.path.exists(output_file):
+                output_files.append(output_file)
+                print(f"已生成片段 {i+1}/{num_parts}: {output_file}")
+            else:
+                print(f"警告: 生成片段 {i+1} 失败")
+        
+        # 如果成功生成所有片段，删除原始文件
+        if len(output_files) == num_parts:
+            os.remove(input_mp3)
+        else:
+            # 如果部分失败，保留原始文件
+            print(f"警告: 只有 {len(output_files)}/{num_parts} 个片段成功生成，保留原始文件")
+            return [input_mp3] + output_files
+        
         return output_files
         
     except Exception as e:
