@@ -1,11 +1,12 @@
 from PyQt6.QtWidgets import (QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
                            QLabel, QProgressBar, QPushButton, QLineEdit,
-                           QFileDialog, QTableWidget, QTableWidgetItem)
+                           QFileDialog, QTableWidget, QTableWidgetItem, QCheckBox)
 from PyQt6.QtCore import Qt, QSize, QThread, pyqtSignal
 from PyQt6.QtGui import QIcon, QDragEnterEvent, QDropEvent
 import os
 import platform
 import asyncio
+from datetime import datetime
 
 # 添加处理文件的工作线程
 class ProcessThread(QThread):
@@ -78,6 +79,11 @@ class DropArea(QWidget):
         
         layout.addLayout(dir_layout)
         
+        # 添加日期子文件夹复选框
+        self.date_subfolder_checkbox = QCheckBox("保存到日期子文件夹 (YYMMDD)")
+        self.date_subfolder_checkbox.setChecked(False)
+        layout.addWidget(self.date_subfolder_checkbox)
+        
         # 拖放提示标签
         self.label = QLabel("将文件拖放到这里\n支持 .md 和 .epub 文件")
         self.label.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -120,8 +126,18 @@ class DropArea(QWidget):
             os.makedirs(normalized_path, exist_ok=True)
     
     def get_output_directory(self):
-        """获取当前选择的输出目录"""
-        return self.dir_edit.text()
+        """获取当前选择的输出目录，如果启用日期子文件夹则添加日期子文件夹"""
+        base_dir = self.dir_edit.text()
+        
+        if self.date_subfolder_checkbox.isChecked():
+            # 获取当前日期，格式为 YYMMDD
+            date_str = datetime.now().strftime("%y%m%d")
+            date_dir = os.path.join(base_dir, date_str)
+            # 确保日期子文件夹存在
+            os.makedirs(date_dir, exist_ok=True)
+            return date_dir
+        else:
+            return base_dir
         
     def dragEnterEvent(self, event: QDragEnterEvent):
         if event.mimeData().hasUrls():
@@ -154,8 +170,8 @@ class MainWindow(QMainWindow):
             Qt.WindowType.FramelessWindowHint
         )
         
-        # 增加窗口尺寸以适应文件列表
-        self.setFixedSize(QSize(420, 420))
+        # 增加窗口尺寸以适应文件列表和日期子文件夹复选框
+        self.setFixedSize(QSize(420, 450))
         
         self.central_widget = QWidget()
         self.setCentralWidget(self.central_widget)
