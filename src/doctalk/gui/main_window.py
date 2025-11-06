@@ -1,7 +1,7 @@
 from PyQt6.QtWidgets import (QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
                            QLabel, QProgressBar, QPushButton, QLineEdit,
                            QFileDialog, QTableWidget, QTableWidgetItem, QCheckBox)
-from PyQt6.QtCore import Qt, QSize, QThread, pyqtSignal
+from PyQt6.QtCore import Qt, QSize, QThread, pyqtSignal, QTimer
 from PyQt6.QtGui import QIcon, QDragEnterEvent, QDropEvent
 import os
 import platform
@@ -197,6 +197,12 @@ class MainWindow(QMainWindow):
         self.process_thread = None
         self.file_row_map = {}
         
+        # 初始化计时器
+        self.timer = QTimer()
+        self.timer.timeout.connect(self.update_timer_display)
+        self.elapsed_seconds = 0
+        self.current_processing_file = None
+        
     def initUI(self):
         self.setWindowTitle('DocTalk')
         self.setWindowFlags(
@@ -204,8 +210,8 @@ class MainWindow(QMainWindow):
             Qt.WindowType.FramelessWindowHint
         )
         
-        # 增加窗口尺寸以适应文件列表和日期子文件夹复选框
-        self.setFixedSize(QSize(420, 450))
+        # 增加窗口尺寸以适应文件列表、日期子文件夹复选框和计时器
+        self.setFixedSize(QSize(420, 480))
         
         self.central_widget = QWidget()
         self.setCentralWidget(self.central_widget)
@@ -245,6 +251,18 @@ class MainWindow(QMainWindow):
         self.file_table.setSelectionBehavior(self.file_table.SelectionBehavior.SelectRows)
         self.file_table.setSelectionMode(self.file_table.SelectionMode.NoSelection)
         layout.addWidget(self.file_table)
+        
+        # 添加计时器显示
+        timer_layout = QHBoxLayout()
+        timer_label = QLabel("处理时间:")
+        timer_label.setStyleSheet("font-weight: bold; color: #666666;")
+        timer_layout.addWidget(timer_label)
+        
+        self.timer_display = QLabel("00:00")
+        self.timer_display.setStyleSheet("font-size: 16px; font-weight: bold; color: #333333;")
+        timer_layout.addStretch()
+        timer_layout.addWidget(self.timer_display)
+        layout.addLayout(timer_layout)
         
         # 设置样式
         self.setStyleSheet("""
@@ -302,6 +320,9 @@ class MainWindow(QMainWindow):
         self.drop_area.label.setText("正在处理...")
         self.drop_area.progress.show()
         
+        # 重置计时器
+        self.reset_timer()
+        
         # 使用选择的输出目录
         output_dir = self.drop_area.get_output_directory()
         os.makedirs(output_dir, exist_ok=True)
@@ -346,6 +367,7 @@ class MainWindow(QMainWindow):
             self.file_table.insertRow(row)
             self.file_table.setItem(row, 0, QTableWidgetItem(os.path.basename(file_path)))
             self.file_row_map[file_path] = row
+        
         # 规范化状态展示
         status_map = {
             "not started": "未开始",
@@ -354,3 +376,38 @@ class MainWindow(QMainWindow):
         }
         display_status = status_map.get(status.lower(), status)
         self.file_table.setItem(row, 1, QTableWidgetItem(display_status))
+        
+        # 处理计时器逻辑
+        if status.lower() == "processing":
+            # 新文件开始处理，重置计时器
+            if self.current_processing_file != file_path:
+                self.reset_timer()
+                self.current_processing_file = file_path
+                self.start_timer()
+        elif status.lower() == "processed":
+            # 文件处理完成，停止计时器
+            if self.current_processing_file == file_path:
+                self.stop_timer()
+                self.current_processing_file = None
+    
+    def reset_timer(self):
+        """重置计时器"""
+        self.elapsed_seconds = 0
+        self.timer_display.setText("00:00")
+        self.timer.stop()
+    
+    def start_timer(self):
+        """启动计时器"""
+        self.elapsed_seconds = 0
+        self.timer.start(1000)  # 每秒更新一次
+    
+    def stop_timer(self):
+        """停止计时器"""
+        self.timer.stop()
+    
+    def update_timer_display(self):
+        """更新计时器显示"""
+        self.elapsed_seconds += 1
+        minutes = self.elapsed_seconds // 60
+        seconds = self.elapsed_seconds % 60
+        self.timer_display.setText(f"{minutes:02d}:{seconds:02d}")
