@@ -78,17 +78,23 @@ jobs:
     steps:
     - name: Download all artifacts
       uses: actions/download-artifact@v4
-
-    - name: Create Release
-      uses: ncipollo/release-action@v1
       with:
-        artifacts: |
-          doctalk-windows-latest/doctalk-cli.exe
-          doctalk-windows-latest/doctalk-gui.exe
-          doctalk-ubuntu-latest/doctalk-cli
-          doctalk-ubuntu-latest/doctalk-gui
-          doctalk-macos-latest/doctalk-cli
-          doctalk-macos-latest/doctalk-gui
+        path: artifacts
+
+    - name: Create or Update Release
+      uses: softprops/action-gh-release@v1
+      with:
+        tag_name: ${{ github.ref_name }}
+        name: Release ${{ github.ref_name }}
         draft: false
         prerelease: false
+        make_latest: true
+        update: true
+        files: |
+          artifacts/doctalk-windows/doctalk-cli.exe
+          artifacts/doctalk-windows/doctalk-gui.exe
+          artifacts/doctalk-linux/doctalk-cli
+          artifacts/doctalk-linux/doctalk-gui
+          artifacts/doctalk-macos/doctalk-cli
+          artifacts/doctalk-macos/doctalk-gui
         token: ${{ secrets.GITHUB_TOKEN }}
