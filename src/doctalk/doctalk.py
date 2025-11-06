@@ -135,7 +135,14 @@ async def text_to_speech(text, voice="xiaoxiao", output_file="output.mp3"):
         initial_delay = 1.0  # Initial delay in seconds
         chunk_delay = 0.5  # Delay between chunks to avoid rate limiting
         
+        # Get output directory for temporary files and normalize output path
+        output_file_abs = os.path.abspath(output_file)
+        output_dir = os.path.dirname(output_file_abs) if os.path.dirname(output_file_abs) else os.getcwd()
+        output_basename = os.path.basename(output_file_abs) or "output"
+        temp_file_prefix = os.path.join(output_dir, f".doctalk_temp_{os.path.splitext(output_basename)[0]}_")
+        
         try:
+            temp_file_index = 0
             for i, chunk in enumerate(valid_chunks):
                 if not is_valid_text_for_tts(chunk):
                     print(f"Warning: Skipping invalid chunk {i+1}")
@@ -145,7 +152,8 @@ async def text_to_speech(text, voice="xiaoxiao", output_file="output.mp3"):
                 if i > 0:
                     await asyncio.sleep(chunk_delay)
                     
-                temp_file = f"temp_{i}.mp3"
+                temp_file = f"{temp_file_prefix}{temp_file_index}.mp3"
+                temp_file_index += 1
                 success = False
                 
                 # Retry logic with exponential backoff
@@ -200,25 +208,45 @@ async def text_to_speech(text, voice="xiaoxiao", output_file="output.mp3"):
                     )
                 
                 # Create file list for ffmpeg
-                files_txt_path = 'files.txt'
+                # Use absolute paths to avoid issues with working directory
+                files_txt_path = os.path.join(output_dir, f".doctalk_files_{os.path.splitext(output_basename)[0]}.txt")
                 with open(files_txt_path, 'w', encoding='utf-8') as f:
                     for temp_file in temp_files:
-                        f.write(f"file '{temp_file}'\n")
+                        # Use absolute path for each temp file
+                        abs_temp_file = os.path.abspath(temp_file)
+                        f.write(f"file '{abs_temp_file}'\n")
+                
+                # Calculate dynamic timeout based on number of files
+                # Base timeout: 60 seconds per file, minimum 300 seconds, maximum 7200 seconds (2 hours)
+                # For very large files on network drives, this allows more time
+                estimated_timeout = max(300, min(7200, len(temp_files) * 60))
+                print(f"Merging {len(temp_files)} audio chunks into {output_file}...")
+                print(f"This may take several minutes for large files. Please wait...")
                 
                 # Merge using ffmpeg
-                result = subprocess.run(
-                    ['ffmpeg', '-f', 'concat', '-safe', '0', '-i', files_txt_path, '-c', 'copy', output_file],
-                    stdout=subprocess.DEVNULL,
-                    stderr=subprocess.PIPE,
-                    timeout=300
-                )
+                try:
+                    result = subprocess.run(
+                        ['ffmpeg', '-f', 'concat', '-safe', '0', '-i', files_txt_path, '-c', 'copy', output_file_abs],
+                        stdout=subprocess.DEVNULL,
+                        stderr=subprocess.PIPE,
+                        timeout=estimated_timeout
+                    )
+                except subprocess.TimeoutExpired:
+                    raise RuntimeError(
+                        f"ffmpeg merge operation timed out after {estimated_timeout} seconds ({estimated_timeout/60:.1f} minutes). "
+                        f"This can happen with very large files or slow network drives. "
+                        f"Consider processing smaller files or using a faster storage location."
+                    )
                 
                 if result.returncode != 0:
                     error_msg = result.stderr.decode('utf-8', errors='ignore') if result.stderr else "Unknown error"
                     raise RuntimeError(f"Failed to merge audio files with ffmpeg: {error_msg}")
             else:
                 # Simply rename if only one temp file
-                os.rename(temp_files[0], output_file)
+                # Remove existing file if it exists to avoid rename errors
+                if os.path.exists(output_file_abs):
+                    os.remove(output_file_abs)
+                os.rename(temp_files[0], output_file_abs)
         finally:
             # Always cleanup temporary files and files.txt, even if merging fails
             # Cleanup files.txt if it exists
