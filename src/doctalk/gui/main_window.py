@@ -6,6 +6,7 @@ from PyQt6.QtGui import QIcon, QDragEnterEvent, QDropEvent
 import os
 import platform
 import asyncio
+import subprocess
 from datetime import datetime
 
 # 添加处理文件的工作线程
@@ -77,6 +78,11 @@ class DropArea(QWidget):
         self.dir_button.setFixedWidth(60)
         dir_layout.addWidget(self.dir_button)
         
+        self.open_dir_button = QPushButton("打开")
+        self.open_dir_button.clicked.connect(self.open_directory)
+        self.open_dir_button.setFixedWidth(60)
+        dir_layout.addWidget(self.open_dir_button)
+        
         layout.addLayout(dir_layout)
         
         # 添加日期子文件夹复选框
@@ -87,6 +93,14 @@ class DropArea(QWidget):
         # 拖放提示标签
         self.label = QLabel("将文件拖放到这里\n支持 .md 和 .epub 文件")
         self.label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.label.setStyleSheet("""
+            QLabel {
+                border: 2px dashed #999999;
+                border-radius: 5px;
+                padding: 20px;
+                background-color: #fafafa;
+            }
+        """)
         layout.addWidget(self.label)
         
         # 进度条
@@ -124,6 +138,26 @@ class DropArea(QWidget):
             self.dir_edit.setText(normalized_path)
             # 确保目录存在
             os.makedirs(normalized_path, exist_ok=True)
+    
+    def open_directory(self):
+        """打开当前选择的输出目录"""
+        dir_path = self.get_output_directory()
+        if not dir_path:
+            return
+        
+        # 确保目录存在
+        os.makedirs(dir_path, exist_ok=True)
+        
+        # 根据操作系统打开目录
+        try:
+            if platform.system() == 'Windows':
+                os.startfile(dir_path)
+            elif platform.system() == 'Darwin':  # macOS
+                subprocess.run(['open', dir_path])
+            else:  # Linux
+                subprocess.run(['xdg-open', dir_path])
+        except Exception as e:
+            print(f"无法打开目录: {e}")
     
     def get_output_directory(self):
         """获取当前选择的输出目录，如果启用日期子文件夹则添加日期子文件夹"""
