@@ -53,7 +53,7 @@ jobs:
       env:
         DOCTALK_BUILD_TIME: ${{ github.event.head_commit.timestamp || github.run_started_at || github.event.pull_request.head.commit.author.date }}
       run: |
-        pyinstaller --onefile --name doctalk-gui --collect-all doctalk --hidden-import=qasync src/doctalk/gui/__main__.py
+        pyinstaller --onefile --windowed --name doctalk-gui --collect-all doctalk --hidden-import=qasync src/doctalk/gui/__main__.py
       if: matrix.os != 'windows-latest'
 
     - name: Build GUI version with PyInstaller (Windows)
@@ -62,7 +62,7 @@ jobs:
       shell: pwsh
       run: |
         $env:DOCTALK_BUILD_TIME = "${{ github.event.head_commit.timestamp || github.run_started_at }}"
-        pyinstaller --onefile --name doctalk-gui --collect-all doctalk --hidden-import=qasync src/doctalk/gui/__main__.py
+        pyinstaller --onefile --noconsole --name doctalk-gui --collect-all doctalk --hidden-import=qasync src/doctalk/gui/__main__.py
       if: matrix.os == 'windows-latest'
 
     - name: Rename executables for Windows

@@ -33,6 +33,8 @@ setup(
     entry_points={
         "console_scripts": [
             "doctalk-cli=doctalk.doctalk:main",
+        ],
+        "gui_scripts": [
             "doctalk-gui=doctalk.gui.__main__:main"
         ],
     },

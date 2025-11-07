@@ -5,6 +5,26 @@ from doctalk.gui.main_window import MainWindow
 import asyncio
 import qasync
 
+# 在 Windows 上隐藏控制台窗口
+if sys.platform == 'win32':
+    import ctypes
+    # 尝试隐藏控制台窗口（如果存在）
+    try:
+        # 如果是 GUI 应用（通过 pythonw 启动），不会有控制台窗口
+        # 但如果是通过 python 启动，尝试隐藏控制台
+        if sys.stdout and hasattr(sys.stdout, 'fileno'):
+            # 尝试获取控制台窗口句柄并隐藏
+            kernel32 = ctypes.windll.kernel32
+            # 获取当前进程的控制台窗口
+            console_window = kernel32.GetConsoleWindow()
+            if console_window:
+                # 隐藏控制台窗口
+                user32 = ctypes.windll.user32
+                user32.ShowWindow(console_window, 0)  # SW_HIDE = 0
+    except Exception:
+        # 如果隐藏失败，继续运行（不影响功能）
+        pass
+
 # 在 macOS 上，这个警告是由系统日志（os_log）直接输出的，无法在 Python 代码中完全抑制
 # 这是一个已知的 macOS + PyQt 系统级警告，完全无害，不影响功能
 # 如果需要隐藏它，可以在终端运行时使用：doctalk-gui 2>/dev/null
