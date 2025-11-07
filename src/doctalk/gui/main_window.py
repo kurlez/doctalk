@@ -204,11 +204,16 @@ class MainWindow(QMainWindow):
         self.current_processing_file = None
         
     def initUI(self):
-        self.setWindowTitle('DocTalk')
+        from doctalk import get_version, get_build_time
+        version = get_version()
+        build_time = get_build_time()
+        self.setWindowTitle(f'DocTalk v{version}')
         self.setWindowFlags(
             Qt.WindowType.WindowStaysOnTopHint |
             Qt.WindowType.FramelessWindowHint
         )
+        self.version = version
+        self.build_time = build_time
         
         # 增加窗口尺寸以适应文件列表、日期子文件夹复选框和计时器
         self.setFixedSize(QSize(420, 480))
@@ -220,9 +225,14 @@ class MainWindow(QMainWindow):
         
         # 添加标题栏
         title_layout = QHBoxLayout()
-        title_label = QLabel("DocTalk")
+        title_label = QLabel(f"DocTalk v{version}")
         title_label.setStyleSheet("font-weight: bold;")
         title_layout.addWidget(title_label)
+        
+        # 添加版本和构建时间信息（小字体）
+        version_info = QLabel(f"Build: {build_time}")
+        version_info.setStyleSheet("font-size: 9px; color: #999999;")
+        title_layout.addWidget(version_info)
         title_layout.addStretch()
         
         min_button = QPushButton("-")
