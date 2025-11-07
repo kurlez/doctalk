@@ -46,6 +46,33 @@ def check_ffmpeg_available():
     except (subprocess.TimeoutExpired, FileNotFoundError, OSError):
         return False
 
+def clean_text_for_tts(text):
+    """
+    Clean text to ensure it's suitable for Edge TTS.
+    
+    Args:
+        text (str): Text to clean
+        
+    Returns:
+        str: Cleaned text
+    """
+    if not text:
+        return ""
+    
+    # Remove null bytes and other control characters (except newlines and tabs)
+    text = re.sub(r'[\x00-\x08\x0b-\x0c\x0e-\x1f\x7f-\x9f]', '', text)
+    
+    # Replace multiple spaces with single space
+    text = re.sub(r' +', ' ', text)
+    
+    # Remove excessive newlines
+    text = re.sub(r'\n{3,}', '\n\n', text)
+    
+    # Strip leading/trailing whitespace
+    text = text.strip()
+    
+    return text
+
 def is_valid_text_for_tts(text):
     """
     Check if text contains valid content for TTS (not just whitespace or special chars).
@@ -107,21 +134,38 @@ async def text_to_speech(text, voice="xiaoxiao", output_file="output.mp3"):
             max_retries = 3
             initial_delay = 1.0
             
+            # Clean the text before processing
+            cleaned_text = clean_text_for_tts(valid_chunks[0])
+            if not cleaned_text or not is_valid_text_for_tts(cleaned_text):
+                raise ValueError("Text is empty or invalid after cleaning")
+            
             for attempt in range(max_retries):
                 try:
-                    communicate = Communicate(valid_chunks[0], voice_id)
+                    communicate = Communicate(cleaned_text, voice_id)
                     await communicate.save(output_file)
-                    return  # Success
+                    
+                    # Verify the file was created and has content
+                    if os.path.exists(output_file) and os.path.getsize(output_file) > 0:
+                        return  # Success
+                    else:
+                        raise ValueError("Generated audio file is empty or missing")
                 except Exception as e:
                     error_str = str(e)
+                    is_no_audio_error = 'no audio' in error_str.lower() or 'no audio was received' in error_str.lower()
                     is_rate_limit = '401' in error_str or 'rate limit' in error_str.lower() or '429' in error_str
                     
                     if attempt < max_retries - 1:
-                        delay = initial_delay * (2 ** attempt)
-                        print(f"Warning: Failed (attempt {attempt + 1}/{max_retries}): {error_str}")
-                        if is_rate_limit:
+                        if is_no_audio_error:
+                            delay = initial_delay * (2 ** attempt) * 2  # Double delay for no-audio errors
+                            print(f"Warning: Failed (attempt {attempt + 1}/{max_retries}): {error_str}")
+                            print(f"  No audio error detected, waiting {delay:.1f} seconds before retry...")
+                        elif is_rate_limit:
+                            delay = initial_delay * (2 ** attempt)
+                            print(f"Warning: Failed (attempt {attempt + 1}/{max_retries}): {error_str}")
                             print(f"  Rate limit detected, waiting {delay:.1f} seconds before retry...")
                         else:
+                            delay = initial_delay * (2 ** attempt)
+                            print(f"Warning: Failed (attempt {attempt + 1}/{max_retries}): {error_str}")
                             print(f"  Retrying in {delay:.1f} seconds...")
                         await asyncio.sleep(delay)
                     else:
@@ -133,8 +177,7 @@ async def text_to_speech(text, voice="xiaoxiao", output_file="output.mp3"):
         files_txt_path = None
         max_retries = 3
         initial_delay = 1.0  # Initial delay in seconds
-        chunk_delay = 0.1  # Reduced delay between chunks (was 0.5)
-        max_concurrent_chunks = 3  # Process multiple chunks concurrently
+        chunk_delay = 0.5  # Delay between chunks to avoid rate limiting
         
         # Get output directory for temporary files and normalize output path
         output_file_abs = os.path.abspath(output_file)
@@ -143,75 +186,83 @@ async def text_to_speech(text, voice="xiaoxiao", output_file="output.mp3"):
         temp_file_prefix = os.path.join(output_dir, f".doctalk_temp_{os.path.splitext(output_basename)[0]}_")
         
         try:
-            # Use semaphore to limit concurrent chunk processing
-            semaphore = asyncio.Semaphore(max_concurrent_chunks)
-            
-            async def process_chunk(chunk, chunk_num, file_index):
-                """Process a single chunk with retry logic"""
-                if not is_valid_text_for_tts(chunk):
-                    print(f"Warning: Skipping invalid chunk {chunk_num}")
-                    return None
-                
-                temp_file = f"{temp_file_prefix}{file_index}.mp3"
-                
-                async with semaphore:
-                    # Small delay to avoid overwhelming the API
-                    if chunk_num > 1:
-                        await asyncio.sleep(chunk_delay)
-                    
-                    # Retry logic with exponential backoff
-                    for attempt in range(max_retries):
-                        try:
-                            communicate = Communicate(chunk, voice_id)
-                            await communicate.save(temp_file)
-                            return temp_file
-                            
-                        except Exception as e:
-                            error_str = str(e)
-                            # Check if it's a rate limit or 401 error
-                            is_rate_limit = '401' in error_str or 'rate limit' in error_str.lower() or '429' in error_str
-                            
-                            if attempt < max_retries - 1:
-                                # Calculate exponential backoff delay
-                                delay = initial_delay * (2 ** attempt)
-                                print(f"Warning: Chunk {chunk_num} failed (attempt {attempt + 1}/{max_retries}): {error_str}")
-                                if is_rate_limit:
-                                    print(f"  Rate limit detected, waiting {delay:.1f} seconds before retry...")
-                                else:
-                                    print(f"  Retrying in {delay:.1f} seconds...")
-                                await asyncio.sleep(delay)
-                            else:
-                                # Final attempt failed
-                                print(f"Warning: Failed to process chunk {chunk_num} after {max_retries} attempts: {error_str}")
-                                # Clean up failed temp file
-                                if os.path.exists(temp_file):
-                                    try:
-                                        os.remove(temp_file)
-                                    except:
-                                        pass
-                                return None
-            
-            # Process chunks concurrently
-            tasks = []
+            # Process chunks sequentially to ensure all chunks are processed correctly
             temp_file_index = 0
             for i, chunk in enumerate(valid_chunks):
-                task = process_chunk(chunk, i + 1, temp_file_index)
-                tasks.append((temp_file_index, task))
+                if not is_valid_text_for_tts(chunk):
+                    print(f"Warning: Skipping invalid chunk {i+1}")
+                    continue
+                
+                # Add delay between chunks to avoid rate limiting
+                if i > 0:
+                    await asyncio.sleep(chunk_delay)
+                    
+                temp_file = f"{temp_file_prefix}{temp_file_index}.mp3"
                 temp_file_index += 1
-            
-            # Wait for all chunks to complete
-            results = await asyncio.gather(*[task for _, task in tasks], return_exceptions=True)
-            
-            # Collect successful results in order
-            temp_files_dict = {}
-            for (file_index, _), result in zip(tasks, results):
-                if isinstance(result, Exception):
-                    print(f"Error processing chunk: {result}")
-                elif result is not None:
-                    temp_files_dict[file_index] = result
-            
-            # Sort by file index to maintain order
-            temp_files = [temp_files_dict[i] for i in sorted(temp_files_dict.keys())]
+                success = False
+                
+                # Clean the chunk text before processing
+                cleaned_chunk = clean_text_for_tts(chunk)
+                if not cleaned_chunk or not is_valid_text_for_tts(cleaned_chunk):
+                    print(f"Warning: Chunk {i+1} is empty after cleaning, skipping")
+                    continue
+                
+                # Retry logic with exponential backoff
+                for attempt in range(max_retries):
+                    try:
+                        # Use cleaned text for TTS
+                        communicate = Communicate(cleaned_chunk, voice_id)
+                        await communicate.save(temp_file)
+                        
+                        # Verify the file was created and has content
+                        if os.path.exists(temp_file) and os.path.getsize(temp_file) > 0:
+                            temp_files.append(temp_file)
+                            success = True
+                            break  # Success, exit retry loop
+                        else:
+                            raise ValueError("Generated audio file is empty or missing")
+                        
+                    except Exception as e:
+                        error_str = str(e)
+                        # Check if it's a "No audio" error - this might need special handling
+                        is_no_audio_error = 'no audio' in error_str.lower() or 'no audio was received' in error_str.lower()
+                        # Check if it's a rate limit or 401 error
+                        is_rate_limit = '401' in error_str or 'rate limit' in error_str.lower() or '429' in error_str
+                        
+                        if attempt < max_retries - 1:
+                            # Calculate exponential backoff delay
+                            # For "no audio" errors, use longer delay
+                            if is_no_audio_error:
+                                delay = initial_delay * (2 ** attempt) * 2  # Double the delay for no-audio errors
+                                print(f"Warning: Chunk {i+1} failed (attempt {attempt + 1}/{max_retries}): {error_str}")
+                                print(f"  No audio error detected, waiting {delay:.1f} seconds before retry...")
+                                print(f"  Chunk length: {len(cleaned_chunk)} chars, preview: {cleaned_chunk[:50]}...")
+                            elif is_rate_limit:
+                                delay = initial_delay * (2 ** attempt)
+                                print(f"Warning: Chunk {i+1} failed (attempt {attempt + 1}/{max_retries}): {error_str}")
+                                print(f"  Rate limit detected, waiting {delay:.1f} seconds before retry...")
+                            else:
+                                delay = initial_delay * (2 ** attempt)
+                                print(f"Warning: Chunk {i+1} failed (attempt {attempt + 1}/{max_retries}): {error_str}")
+                                print(f"  Retrying in {delay:.1f} seconds...")
+                            await asyncio.sleep(delay)
+                        else:
+                            # Final attempt failed
+                            print(f"Warning: Failed to process chunk {i+1} after {max_retries} attempts: {error_str}")
+                            if is_no_audio_error:
+                                print(f"  Chunk content preview: {cleaned_chunk[:100]}...")
+                            # Clean up failed temp file
+                            if os.path.exists(temp_file):
+                                try:
+                                    os.remove(temp_file)
+                                except:
+                                    pass
+                
+                if not success:
+                    # If this chunk failed completely, we continue with other chunks
+                    # but track that we had failures
+                    print(f"Error: Chunk {i+1} processing failed completely, skipping")
+                    continue
             
             if not temp_files:
                 raise ValueError("No audio files were successfully generated from any chunks")
