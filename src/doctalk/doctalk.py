@@ -458,8 +458,17 @@ def main():
     """
     Main entry point for the command line interface.
     """
-    parser = argparse.ArgumentParser(description='Convert Markdown or EPUB files to speech audio')
-    parser.add_argument('--input', '-i', nargs='+', required=True,
+    from doctalk import get_version, get_build_time
+    
+    parser = argparse.ArgumentParser(
+        description='Convert Markdown or EPUB files to speech audio',
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=f"""
+Version: {get_version()}
+Build Time: {get_build_time()}
+        """
+    )
+    parser.add_argument('--input', '-i', nargs='+', required=False,
                       help='Input file or directory paths (supports .md and .epub files)')
     parser.add_argument('--output-dir', '-o', default='output',
                       help='Output directory path (default: output)')
@@ -468,12 +477,21 @@ def main():
                       help='Select voice (default: xiaoxiao)')
     parser.add_argument('--list', '-l', action='store_true',
                       help='Display all available voice options')
+    parser.add_argument('--version', action='version',
+                      version=f'%(prog)s {get_version()}\nBuild Time: {get_build_time()}')
     
     args = parser.parse_args()
     
     if args.list:
         list_available_voices()
-        return
+        return 0
+    
+    # 如果没有输入文件，显示帮助信息
+    if not args.input:
+        parser.print_help()
+        print(f"\nVersion: {get_version()}")
+        print(f"Build Time: {get_build_time()}")
+        return 0
     
     # Check if ffmpeg is available before processing
     if not check_ffmpeg_available():
@@ -486,6 +504,7 @@ def main():
         print("  3. Or use: winget install ffmpeg")
         return 1
     
+    print(f"DocTalk v{get_version()} (Build: {get_build_time()})")
     print(f"Using voice: {args.voice}")
     asyncio.run(process_files(args.input, args.output_dir, args.voice))
     print("\nAll files processed!")

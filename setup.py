@@ -5,7 +5,7 @@ with open("README.md", "r", encoding="utf-8") as fh:
 
 setup(
     name="doctalk",
-    version="0.3.0",
+    version="0.4.0",
     author="Wenfeng Liu",
     author_email="wenfeng.liu@gmail.com",
     description="An offline document-to-speech converter using Edge TTS",
@@ -33,6 +33,8 @@ setup(
     entry_points={
         "console_scripts": [
             "doctalk-cli=doctalk.doctalk:main",
+        ],
+        "gui_scripts": [
             "doctalk-gui=doctalk.gui.__main__:main"
         ],
     },
